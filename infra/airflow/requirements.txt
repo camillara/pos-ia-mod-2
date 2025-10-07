@@ -1,0 +1,7 @@
+apache-airflow-providers-http==5.3.4
+apache-airflow-providers-airbyte==5.2.3
+
+dbt-snowflake==1.7.0
+
+requests==2.32.3
+
