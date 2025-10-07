@@ -16,3 +16,8 @@ Thumbs.db
 .vscode/
 .idea/
 .venv
+
+# Metabase
+infra/metabase/metabase-data/
+infra/metabase/.env
+
