@@ -5,3 +5,5 @@ dbt-snowflake==1.7.0
 
 requests==2.32.3
 
+astronomer-cosmos==1.6.0
+

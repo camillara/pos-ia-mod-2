@@ -1,0 +1,22 @@
+from datetime import datetime
+from cosmos import DbtDag, ProjectConfig, ProfileConfig
+
+# seu projeto dbt dentro do container
+PROJECT = ProjectConfig(dbt_project_path="/opt/airflow/project/dbt")
+
+# Se você já tem profiles.yml em /opt/airflow/project/dbt/profiles
+# (ele lê SNOWFLAKE_* do .env), basta dizer o nome do profile/target:
+PROFILE = ProfileConfig(
+    profile_name="ons",   # ajuste p/ o nome do seu profiles.yml
+    target_name="dev",
+)
+
+dag = DbtDag(
+    dag_id="dbt_ons_cosmos",
+    project_config=PROJECT,
+    profile_config=PROFILE,
+    schedule=None,
+    start_date=datetime(2025, 10, 1),
+    catchup=False,
+    tags=["dbt","cosmos","snowflake"],
+)
