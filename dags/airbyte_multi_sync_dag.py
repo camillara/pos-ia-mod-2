@@ -1,7 +1,9 @@
+# dags/airbyte_multi_sync_dag.py
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.models import Variable
 from datetime import datetime, timedelta
+import os
 import requests
 import time
 
@@ -18,39 +20,45 @@ CONNECTION_IDS = [
     "a04cd22e-7fdd-49c6-be34-6eda9d11042c",
     "8335aee6-c676-4aa5-92bd-efd6cbb02d91",
     "1832918d-91b1-46b8-9dd8-b49661c2ba8c",
-    "69f4c6ad-ec7f-4051-9487-c262c640aa68"
+    "69f4c6ad-ec7f-4051-9487-c262c640aa68",
 ]
 
-def trigger_airbyte_sync(connection_id):
-    base_url = Variable.get("AIRBYTE_IP")
-    sync_url = f"{base_url}/api/v1/connections/sync"
-    job_url = f"{base_url}/api/v1/jobs/get"
-    headers = {"Content-Type": "application/json"}
+# Preferir ENV; se não houver, cair para Airflow Variable (mantém compatibilidade)
+AIRBYTE_URL = os.environ.get("AIRBYTE_URL") or Variable.get("AIRBYTE_IP", default_var="http://host.docker.internal:8000")
+AIRBYTE_API_KEY = os.environ.get("AIRBYTE_API_KEY") or Variable.get("AIRBYTE_API_KEY", default_var=None)
 
-    # Iniciar a sincronização da conexão Airbyte
-    resp = requests.post(sync_url, json={"connectionId": connection_id}, headers=headers)
+def _headers():
+    h = {"Content-Type": "application/json"}
+    if AIRBYTE_API_KEY:  # se usar Airbyte Cloud ou auth via API key
+        h["Authorization"] = f"Bearer {AIRBYTE_API_KEY}"
+    return h
+
+def trigger_airbyte_sync(connection_id: str):
+    sync_url = f"{AIRBYTE_URL}/api/v1/connections/sync"
+    job_url  = f"{AIRBYTE_URL}/api/v1/jobs/get"
+
+    # Inicia a sync
+    resp = requests.post(sync_url, json={"connectionId": connection_id}, headers=_headers(), timeout=60)
     resp.raise_for_status()
-    job_id = resp.json()['job']['id']
+    job_id = resp.json()["job"]["id"]
 
-    # Aguardar a sincronização terminar com sucesso ou falha
+    # Polling do job
     while True:
-        status_resp = requests.post(job_url, json={"id": job_id}, headers=headers)
+        status_resp = requests.post(job_url, json={"id": job_id}, headers=_headers(), timeout=30)
         status_resp.raise_for_status()
-        status = status_resp.json()['job']['status']
+        status = status_resp.json()["job"]["status"]
 
         if status == "succeeded":
-            print(f"Conexão {connection_id} sincronizada com sucesso.")
+            print(f"[OK] Conexão {connection_id} sincronizada.")
             break
-        elif status == "failed":
-            raise Exception(f"Sincronização Airbyte para conexão {connection_id} falhou.")
-        else:
-            print(f"Sincronização conexão {connection_id} status: {status}. Aguardando...")
+        if status == "failed":
+            raise RuntimeError(f"[FAIL] Airbyte sync falhou para {connection_id}.")
+        print(f"[WAIT] {connection_id} status: {status} ...")
         time.sleep(10)
 
-
 def run_syncs():
-    for connection_id in CONNECTION_IDS:
-        trigger_airbyte_sync(connection_id)
+    for cid in CONNECTION_IDS:
+        trigger_airbyte_sync(cid)
 
 default_args = {
     "owner": "airflow",
@@ -63,13 +71,12 @@ default_args = {
 with DAG(
     dag_id="airbyte_multi_connections_sync",
     default_args=default_args,
-    description="Sincroniza múltiplas conexões Airbyte usando variável AIRBYTE_IP",
-    schedule="0 0 */2 * *",  # A cada 2 dias à meia-noite
+    description="Sincroniza múltiplas conexões Airbyte; lê AIRBYTE_URL/AIRBYTE_API_KEY (env) ou AIRBYTE_IP (Variable).",
+    # Para rodar apenas manualmente, use schedule=None
+    schedule=None,
     catchup=False,
 ) as dag:
     sync_task = PythonOperator(
         task_id="run_airbyte_syncs",
-        python_callable=run_syncs
+        python_callable=run_syncs,
     )
-
-

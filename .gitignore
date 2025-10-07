@@ -21,3 +21,9 @@ Thumbs.db
 infra/metabase/metabase-data/
 infra/metabase/.env
 
+infra/airflow/.env
+infra/airflow/logs/
+infra/airflow/plugins/__pycache__/
+dbt/target/
+dbt/logs/
+
